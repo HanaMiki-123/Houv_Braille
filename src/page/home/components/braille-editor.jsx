@@ -1,7 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FileText, FolderOpen, Save, Languages, Type, Info, X, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = __WEBSITE_VERSION__;
+
+// Single-token extension. Some browsers/OS file pickers only recognize the
+// *last* dot as "the extension" — when the accepted extension has two dots
+// (".hv.braille"), the native Save dialog can decide the typed name is
+// missing its extension and append the whole thing again, producing
+// "name.hv.braille.hv.braille". Using one dot avoids that ambiguity entirely.
+const FILE_EXTENSION = '.hvbraille';
+// Old file extension kept only so previously-saved files can still be opened.
+const LEGACY_EXTENSION = '.hv.braille';
 
 const BRAILLE_MAP = {
   a: '⠁', b: '⠃', c: '⠉', d: '⠙', e: '⠑', f: '⠋', g: '⠛', h: '⠓', i: '⠊', j: '⠚',
@@ -34,9 +43,34 @@ function brailleToText(braille) {
     .join('');
 }
 
+// Strips ANY trailing occurrence(s) of either the current or legacy
+// extension, repeatedly, so a name is never left with a doubled suffix no
+// matter how it arrived (typed by hand, pre-filled from a previous file,
+// or round-tripped through an OS save dialog).
+function stripKnownExtensions(name) {
+  let base = (name || '').trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    if (base.toLowerCase().endsWith(FILE_EXTENSION)) {
+      base = base.slice(0, base.length - FILE_EXTENSION.length);
+      changed = true;
+    } else if (base.toLowerCase().endsWith(LEGACY_EXTENSION)) {
+      base = base.slice(0, base.length - LEGACY_EXTENSION.length);
+      changed = true;
+    }
+  }
+  return base;
+}
+
 function sanitizeFileName(name) {
-  const trimmed = (name || '').trim().replace(/[\\/:*?"<>|]/g, '').replace(/\.hv\.braille$/i, '');
-  return trimmed.length ? trimmed : 'untitled';
+  const cleaned = stripKnownExtensions(name).replace(/[\\/:*?"<>|]/g, '').trim();
+  return cleaned.length ? cleaned : 'untitled';
+}
+
+function hasKnownExtension(fileName) {
+  const lower = (fileName || '').toLowerCase();
+  return lower.endsWith(FILE_EXTENSION) || lower.endsWith(LEGACY_EXTENSION);
 }
 
 const COLORS = {
@@ -154,21 +188,21 @@ export default function BrailleEditor() {
   }
 
   async function performCreateFile(rawName) {
-    const finalName = sanitizeFileName(rawName) + '.hv.braille';
+    const finalName = sanitizeFileName(rawName) + FILE_EXTENSION;
     const content = buildFileContent();
     if (supportsFS) {
       try {
         const handle = await window.showSaveFilePicker({
           suggestedName: finalName,
-          types: [{ description: 'HV Braille File', accept: { 'text/plain': ['.hv.braille'] } }],
+          types: [{ description: 'HV Braille File', accept: { 'text/plain': [FILE_EXTENSION] } }],
         });
-        const writable = await handle.createWritable();
-        await writable.write(content);
-        await writable.close();
+        // Defensive: normalize whatever name the OS/browser handed back, in
+        // case a picker still appends its own extension on top of ours.
+        const safeName = sanitizeFileName(handle.name) + FILE_EXTENSION;
         setFileHandle(handle);
-        setFileName(handle.name);
+        setFileName(safeName);
         setDirty(false);
-        showToast('success', `បានបង្កើតឯកសារ "${handle.name}" ជោគជ័យ`);
+        showToast('success', `បានបង្កើតឯកសារ "${safeName}" ជោគជ័យ`);
       } catch (err) {
         if (err && err.name !== 'AbortError') fallbackDownload(finalName, content);
       }
@@ -199,20 +233,23 @@ export default function BrailleEditor() {
   }
 
   async function loadFile(file, handle) {
-    if (!file.name.toLowerCase().endsWith('.hv.braille')) {
-      showToast('error', 'អនុញ្ញាតតែឯកសារនាមត្រកូល .hv.braille ប៉ុណ្ណោះ!');
+    if (!hasKnownExtension(file.name)) {
+      showToast('error', `អនុញ្ញាតតែឯកសារនាមត្រកូល ${FILE_EXTENSION} ប៉ុណ្ណោះ!`);
       return;
     }
     try {
       const text = await file.text();
       const [brailleContent] = text.split('\n\n---\n');
       const restoredRaw = brailleToText((brailleContent || '').replace(/\n$/, ''));
+      // Normalize the display name so a legacy double-extension file (from
+      // before this fix) is shown and re-saved with a single clean suffix.
+      const displayName = sanitizeFileName(file.name) + FILE_EXTENSION;
       setRawText(restoredRaw);
       setFileHandle(handle);
-      setFileName(file.name);
+      setFileName(displayName);
       setMode('create');
       setDirty(false);
-      showToast('success', `បានបើកឯកសារ "${file.name}"`);
+      showToast('success', `បានបើកឯកសារ "${displayName}"`);
     } catch (err) {
       showToast('error', 'មិនអាចអានឯកសារនេះបានទេ');
     }
@@ -222,7 +259,10 @@ export default function BrailleEditor() {
     if (supportsFS) {
       try {
         const [handle] = await window.showOpenFilePicker({
-          types: [{ description: 'HV Braille File', accept: { 'text/plain': ['.hv.braille'] } }],
+          types: [{
+            description: 'HV Braille File',
+            accept: { 'text/plain': [FILE_EXTENSION, LEGACY_EXTENSION] },
+          }],
           excludeAcceptAllOption: true,
           multiple: false,
         });
@@ -319,7 +359,7 @@ export default function BrailleEditor() {
                 className="hv-btn"
                 style={styles.btnPrimary}
                 onClick={() => {
-                  setNameInput(fileName ? fileName.replace(/\.hv\.braille$/i, '') : '');
+                  setNameInput(fileName ? sanitizeFileName(fileName) : '');
                   setShowNameModal(true);
                 }}
               >
@@ -334,7 +374,7 @@ export default function BrailleEditor() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".hv.braille"
+                accept={`${FILE_EXTENSION},${LEGACY_EXTENSION}`}
                 style={{ display: 'none' }}
                 onChange={handleFileInputChange}
               />
@@ -439,7 +479,7 @@ export default function BrailleEditor() {
         <div style={styles.modalOverlay} onClick={() => setShowNameModal(false)}>
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>រក្សាទុកជាឯកសារថ្មី</h2>
-            <p style={styles.modalSubtitle}>ដាក់ឈ្មោះឯកសារ — ប្រព័ន្ធនឹងបន្ថែម <code>.hv.braille</code> ដោយស្វ័យប្រវត្តិ</p>
+            <p style={styles.modalSubtitle}>ដាក់ឈ្មោះឯកសារ — ប្រព័ន្ធនឹងបន្ថែម <code>{FILE_EXTENSION}</code> ដោយស្វ័យប្រវត្តិ</p>
             <input
               autoFocus
               style={styles.modalInput}
@@ -453,7 +493,7 @@ export default function BrailleEditor() {
                 }
               }}
             />
-            <div style={styles.modalHint}>{sanitizeFileName(nameInput)}.hv.braille</div>
+            <div style={styles.modalHint}>{sanitizeFileName(nameInput)}{FILE_EXTENSION}</div>
             <div style={styles.modalActions}>
               <button className="hv-btn" style={styles.btnGhost} onClick={() => setShowNameModal(false)}>
                 បោះបង់
