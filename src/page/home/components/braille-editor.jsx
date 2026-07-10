@@ -1,0 +1,742 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { FileText, FolderOpen, Save, Languages, Type, Info, X, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
+
+const APP_VERSION = '1.0.0';
+
+const BRAILLE_MAP = {
+  a: '⠁', b: '⠃', c: '⠉', d: '⠙', e: '⠑', f: '⠋', g: '⠛', h: '⠓', i: '⠊', j: '⠚',
+  k: '⠅', l: '⠇', m: '⠍', n: '⠝', o: '⠕', p: '⠏', q: '⠟', r: '⠗', s: '⠎', t: '⠞',
+  u: '⠥', v: '⠧', w: '⠺', x: '⠭', y: '⠽', z: '⠵',
+  '1': '⠁', '2': '⠃', '3': '⠉', '4': '⠙', '5': '⠑', '6': '⠋', '7': '⠛', '8': '⠓', '9': '⠊', '0': '⠚',
+  ' ': ' ', '.': '⠲', ',': '⠂', '?': '⠦', '!': '⠖', "'": '⠄', '-': '⠤',
+  ':': '⠒', ';': '⠆', '"': '⠶', '(': '⠣', ')': '⠜', '/': '⠌', '\n': '\n',
+};
+
+const REVERSE_MAP = {};
+Object.entries(BRAILLE_MAP).forEach(([plain, braille]) => {
+  if (!(braille in REVERSE_MAP)) REVERSE_MAP[braille] = plain;
+});
+
+function textToBraille(text) {
+  return text
+    .split('')
+    .map((ch) => {
+      const lower = ch.toLowerCase();
+      return BRAILLE_MAP[lower] !== undefined ? BRAILLE_MAP[lower] : ch;
+    })
+    .join('');
+}
+
+function brailleToText(braille) {
+  return braille
+    .split('')
+    .map((ch) => (REVERSE_MAP[ch] !== undefined ? REVERSE_MAP[ch] : ch))
+    .join('');
+}
+
+function sanitizeFileName(name) {
+  const trimmed = (name || '').trim().replace(/[\\/:*?"<>|]/g, '').replace(/\.hv\.braille$/i, '');
+  return trimmed.length ? trimmed : 'untitled';
+}
+
+const COLORS = {
+  ink: '#14161f',
+  inkPanel: '#1b1e29',
+  inkLine: '#2b2f3d',
+  paper: '#f5efe1',
+  paperSoft: '#ece3cf',
+  brass: '#c98a3e',
+  brassBright: '#e3ab63',
+  rose: '#c06a4d',
+  textOnInk: '#e7e2d3',
+  mutedOnInk: '#8d90a1',
+  textOnPaper: '#241f16',
+  mutedOnPaper: '#7c7360',
+  danger: '#c96a5c',
+  success: '#6fa87e',
+};
+
+function DotLogo({ active }) {
+  const positions = [
+    [0, 0], [1, 0],
+    [0, 1], [1, 1],
+    [0, 2], [1, 2],
+  ];
+  return (
+    <svg width="26" height="38" viewBox="0 0 26 38" aria-hidden="true">
+      {positions.map(([col, row], i) => (
+        <circle
+          key={i}
+          cx={7 + col * 12}
+          cy={6 + row * 12}
+          r="4.4"
+          fill={COLORS.brassBright}
+          style={{
+            animation: active ? `dotPulse 2.4s ease-in-out ${i * 0.18}s infinite` : 'none',
+            transformOrigin: `${7 + col * 12}px ${6 + row * 12}px`,
+          }}
+        />
+      ))}
+    </svg>
+  );
+}
+
+export default function BrailleEditor() {
+  const [mode, setMode] = useState('create');
+  const [rawText, setRawText] = useState('');
+  const [fileName, setFileName] = useState(null);
+  const [fileHandle, setFileHandle] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [showInfo, setShowInfo] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const leftRef = useRef(null);
+  const cursorPosRef = useRef(0);
+  const fileInputRef = useRef(null);
+  const toastTimerRef = useRef(null);
+
+  const supportsFS = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+
+  const showToast = useCallback((type, message) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ type, message });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3600);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'create' && leftRef.current) {
+      leftRef.current.selectionStart = leftRef.current.selectionEnd = cursorPosRef.current;
+    }
+  }, [rawText, mode]);
+
+  const handleCreateModeChange = (e) => {
+    const newDisplayed = e.target.value;
+    const oldDisplayed = textToBraille(rawText);
+    let start = 0;
+    const maxStart = Math.min(oldDisplayed.length, newDisplayed.length);
+    while (start < maxStart && oldDisplayed[start] === newDisplayed[start]) start++;
+    let oldEnd = oldDisplayed.length;
+    let newEnd = newDisplayed.length;
+    while (oldEnd > start && newEnd > start && oldDisplayed[oldEnd - 1] === newDisplayed[newEnd - 1]) {
+      oldEnd--;
+      newEnd--;
+    }
+    const removed = oldEnd - start;
+    const inserted = newDisplayed.slice(start, newEnd);
+    const newRaw = rawText.slice(0, start) + inserted + rawText.slice(start + removed);
+    cursorPosRef.current = start + inserted.length;
+    setRawText(newRaw);
+    setDirty(true);
+  };
+
+  const buildFileContent = () => {
+    const braille = textToBraille(rawText);
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    return `${braille}\n\n---\nVersion: ${APP_VERSION}\nURL: ${url}\n`;
+  };
+
+  function fallbackDownload(name, content) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setFileHandle(null);
+    setFileName(name);
+    setDirty(false);
+    showToast('info', `ឯកសារ "${name}" ត្រូវបានទាញយក — ប្រសិនបើត្រូវការ សូមផ្លាស់ទីវាទៅ Desktop ដោយដៃ`);
+  }
+
+  async function performCreateFile(rawName) {
+    const finalName = sanitizeFileName(rawName) + '.hv.braille';
+    const content = buildFileContent();
+    if (supportsFS) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: finalName,
+          types: [{ description: 'HV Braille File', accept: { 'text/plain': ['.hv.braille'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        setFileHandle(handle);
+        setFileName(handle.name);
+        setDirty(false);
+        showToast('success', `បានបង្កើតឯកសារ "${handle.name}" ជោគជ័យ`);
+      } catch (err) {
+        if (err && err.name !== 'AbortError') fallbackDownload(finalName, content);
+      }
+    } else {
+      fallbackDownload(finalName, content);
+    }
+  }
+
+  async function handleSave() {
+    if (!fileName) {
+      showToast('error', 'សូមបង្កើត ឬបើកឯកសារជាមុនសិន');
+      return;
+    }
+    const content = buildFileContent();
+    if (fileHandle) {
+      try {
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        setDirty(false);
+        showToast('success', `បានរក្សាទុក "${fileName}" ជោគជ័យ`);
+      } catch (err) {
+        showToast('error', 'មិនអាចរក្សាទុកបានទេ');
+      }
+    } else {
+      fallbackDownload(fileName, content);
+    }
+  }
+
+  async function loadFile(file, handle) {
+    if (!file.name.toLowerCase().endsWith('.hv.braille')) {
+      showToast('error', 'អនុញ្ញាតតែឯកសារនាមត្រកូល .hv.braille ប៉ុណ្ណោះ!');
+      return;
+    }
+    try {
+      const text = await file.text();
+      const [brailleContent] = text.split('\n\n---\n');
+      const restoredRaw = brailleToText((brailleContent || '').replace(/\n$/, ''));
+      setRawText(restoredRaw);
+      setFileHandle(handle);
+      setFileName(file.name);
+      setMode('create');
+      setDirty(false);
+      showToast('success', `បានបើកឯកសារ "${file.name}"`);
+    } catch (err) {
+      showToast('error', 'មិនអាចអានឯកសារនេះបានទេ');
+    }
+  }
+
+  async function handleOpenFile() {
+    if (supportsFS) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'HV Braille File', accept: { 'text/plain': ['.hv.braille'] } }],
+          excludeAcceptAllOption: true,
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        await loadFile(file, handle);
+      } catch (err) {
+        /* user cancelled */
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  }
+
+  async function handleFileInputChange(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    await loadFile(file, null);
+  }
+
+  const rightDisplay = mode === 'create' ? rawText : textToBraille(rawText);
+  const charCount = rawText.length;
+  const showFileButtons = mode === 'create';
+
+  return (
+    <div style={styles.appShell}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; }
+        @keyframes dotPulse {
+          0%, 60%, 100% { opacity: 0.45; transform: scale(1); }
+          20% { opacity: 1; transform: scale(1.18); }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes modalIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateX(24px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; transition: none !important; }
+        }
+        .hv-header { animation: slideDown 0.5s ease-out; }
+        .hv-panel { animation: fadeUp 0.6s ease-out; }
+        .hv-btn { transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease, border-color 0.15s ease; }
+        .hv-btn:hover:not(:disabled) { transform: translateY(-1px); }
+        .hv-btn:active:not(:disabled) { transform: translateY(0px) scale(0.97); }
+        .hv-select { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+        .hv-textarea { transition: box-shadow 0.15s ease; }
+        .hv-textarea:focus { outline: none; }
+        ::selection { background: ${COLORS.brass}; color: ${COLORS.ink}; }
+        @media (max-width: 820px) {
+          .hv-body { grid-template-columns: 1fr !important; grid-template-rows: 1fr 1fr; }
+          .hv-toolbar { flex-wrap: wrap; }
+        }
+      `}</style>
+
+      <header className="hv-header" style={styles.header}>
+        <div style={styles.headerLeft}>
+          <DotLogo active />
+          <div>
+            <h1 style={styles.title}>ហត្ថលេខិត Braille</h1>
+            <p style={styles.subtitle}>កម្មវិធីសរសេរ &amp; បំប្លែងអក្សរទៅជា Braille ជាបន្តបន្ទាប់</p>
+          </div>
+        </div>
+
+        <div className="hv-toolbar" style={styles.toolbar}>
+          <div style={styles.selectWrap}>
+            <label style={styles.selectLabel}>របៀប</label>
+            <select
+              className="hv-select"
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              style={styles.select}
+            >
+              <option value="create">Create file</option>
+              <option value="translate">Translate</option>
+            </select>
+          </div>
+
+          {showFileButtons && (
+            <>
+              <button
+                className="hv-btn"
+                style={styles.btnPrimary}
+                onClick={() => {
+                  setNameInput(fileName ? fileName.replace(/\.hv\.braille$/i, '') : '');
+                  setShowNameModal(true);
+                }}
+              >
+                <FileText size={16} /> Create file
+              </button>
+              <button className="hv-btn" style={styles.btnGhost} onClick={handleOpenFile}>
+                <FolderOpen size={16} /> Open file
+              </button>
+              <button className="hv-btn" style={styles.btnGhost} onClick={handleSave}>
+                <Save size={16} /> Save
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".hv.braille"
+                style={{ display: 'none' }}
+                onChange={handleFileInputChange}
+              />
+            </>
+          )}
+
+          <button
+            className="hv-btn"
+            style={styles.btnIcon}
+            onClick={() => setShowInfo((v) => !v)}
+            aria-label="ព័ត៌មានអំពីតារាង Braille"
+          >
+            <Info size={16} />
+          </button>
+
+          <div style={styles.versionBadge}>v{APP_VERSION}</div>
+        </div>
+      </header>
+
+      {showInfo && (
+        <div style={styles.infoPanel}>
+          <div style={styles.infoPanelInner}>
+            <p style={styles.infoText}>
+              ការបំប្លែងនេះប្រើតារាង Braille កម្រិត១ (Grade&nbsp;1) ដ៏សាមញ្ញ៖ អក្សរធំ-តូចប្រើចំណុចដូចគ្នា
+              ហើយលេខ ០-៩ ប្រើចំណុចដូចអក្សរ a-j ដើម្បីរក្សាទំហំអក្សរឲ្យស្មើគ្នារវាងអក្សរធម្មតានិង Braille។
+            </p>
+            <button style={styles.infoClose} onClick={() => setShowInfo(false)} aria-label="បិទ">
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="hv-body" style={styles.body}>
+        <section className="hv-panel" style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <span style={styles.panelHeaderIcon}>
+              {mode === 'create' ? <Sparkles size={14} /> : <Type size={14} />}
+            </span>
+            <span style={styles.panelHeaderText}>
+              {mode === 'create' ? 'សរសេរនៅទីនេះ · លទ្ធផលចេញជា Braille' : 'អក្សរធម្មតា'}
+            </span>
+          </div>
+          {mode === 'create' ? (
+            <textarea
+              ref={leftRef}
+              className="hv-textarea"
+              style={styles.textareaBraille}
+              value={textToBraille(rawText)}
+              onChange={handleCreateModeChange}
+              placeholder="⠁⠃⠉ ចាប់ផ្ដើមវាយអក្សរ..."
+              spellCheck={false}
+            />
+          ) : (
+            <textarea
+              className="hv-textarea"
+              style={styles.textareaPlain}
+              value={rawText}
+              onChange={(e) => {
+                setRawText(e.target.value);
+                setDirty(true);
+              }}
+              placeholder="វាយអក្សរធម្មតានៅទីនេះ..."
+              spellCheck={false}
+            />
+          )}
+        </section>
+
+        <div style={styles.divider} aria-hidden="true">
+          <span style={styles.dividerDot} />
+          <span style={styles.dividerDot} />
+          <span style={styles.dividerDot} />
+        </div>
+
+        <section className="hv-panel" style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <span style={styles.panelHeaderIcon}>
+              {mode === 'create' ? <Type size={14} /> : <Sparkles size={14} />}
+            </span>
+            <span style={styles.panelHeaderText}>
+              {mode === 'create' ? 'អក្សរធម្មតា (Realtime)' : 'លទ្ធផល Braille (Realtime)'}
+            </span>
+          </div>
+          <div
+            style={mode === 'create' ? styles.outputPlain : styles.outputBraille}
+          >
+            {rightDisplay || <span style={{ opacity: 0.4 }}>លទ្ធផលបង្ហាញនៅទីនេះ...</span>}
+          </div>
+        </section>
+      </main>
+
+      <footer style={styles.statusBar}>
+        <span>{fileName ? `${fileName}${dirty ? ' •' : ''}` : 'ឯកសារថ្មី (មិនទាន់រក្សាទុក)'}</span>
+        <span style={styles.statusDivider}>·</span>
+        <span>{mode === 'create' ? 'Create file' : 'Translate'}</span>
+        <span style={styles.statusDivider}>·</span>
+        <span>{charCount} តួអក្សរ</span>
+        <span style={{ marginLeft: 'auto' }}>hv-braille-editor v{APP_VERSION}</span>
+      </footer>
+
+      {showNameModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowNameModal(false)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>រក្សាទុកជាឯកសារថ្មី</h2>
+            <p style={styles.modalSubtitle}>ដាក់ឈ្មោះឯកសារ — ប្រព័ន្ធនឹងបន្ថែម <code>.hv.braille</code> ដោយស្វ័យប្រវត្តិ</p>
+            <input
+              autoFocus
+              style={styles.modalInput}
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              placeholder="untitled"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setShowNameModal(false);
+                  performCreateFile(nameInput);
+                }
+              }}
+            />
+            <div style={styles.modalHint}>{sanitizeFileName(nameInput)}.hv.braille</div>
+            <div style={styles.modalActions}>
+              <button className="hv-btn" style={styles.btnGhost} onClick={() => setShowNameModal(false)}>
+                បោះបង់
+              </button>
+              <button
+                className="hv-btn"
+                style={styles.btnPrimary}
+                onClick={() => {
+                  setShowNameModal(false);
+                  performCreateFile(nameInput);
+                }}
+              >
+                <FileText size={16} /> បង្កើតឯកសារ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div
+          style={{
+            ...styles.toast,
+            borderColor: toast.type === 'error' ? COLORS.danger : toast.type === 'success' ? COLORS.success : COLORS.brass,
+          }}
+        >
+          {toast.type === 'error' ? (
+            <AlertTriangle size={16} color={COLORS.danger} />
+          ) : (
+            <CheckCircle2 size={16} color={toast.type === 'success' ? COLORS.success : COLORS.brass} />
+          )}
+          <span>{toast.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const fontVoice = "'khmer', serif";
+const fontSans = "'khmer', sans-serif";
+const fontMono = "'JetBrains Mono', monospace";
+
+const styles = {
+  appShell: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    background: COLORS.ink,
+    fontFamily: fontSans,
+    color: COLORS.textOnInk,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    padding: '14px 24px',
+    borderBottom: `1px solid ${COLORS.inkLine}`,
+    background: COLORS.inkPanel,
+    flexWrap: 'wrap',
+  },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+  title: { fontFamily: fontVoice, fontSize: 20, fontWeight: 600, margin: 0, color: COLORS.paper, letterSpacing: 0.2 },
+  subtitle: { fontSize: 12, margin: '2px 0 0', color: COLORS.mutedOnInk },
+  toolbar: { display: 'flex', alignItems: 'center', gap: 10 },
+  selectWrap: { display: 'flex', alignItems: 'center', gap: 6, marginRight: 4 },
+  selectLabel: { fontSize: 11, color: COLORS.mutedOnInk },
+  select: {
+    background: COLORS.ink,
+    color: COLORS.textOnInk,
+    border: `1px solid ${COLORS.inkLine}`,
+    borderRadius: 8,
+    padding: '7px 10px',
+    fontSize: 13,
+    fontFamily: fontSans,
+    cursor: 'pointer',
+  },
+  btnPrimary: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    background: COLORS.brass,
+    color: COLORS.ink,
+    border: `1px solid ${COLORS.brass}`,
+    borderRadius: 8,
+    padding: '8px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: fontSans,
+  },
+  btnGhost: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    background: 'transparent',
+    color: COLORS.textOnInk,
+    border: `1px solid ${COLORS.inkLine}`,
+    borderRadius: 8,
+    padding: '8px 14px',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: fontSans,
+  },
+  btnIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    background: 'transparent',
+    color: COLORS.mutedOnInk,
+    border: `1px solid ${COLORS.inkLine}`,
+    borderRadius: 8,
+    cursor: 'pointer',
+  },
+  versionBadge: {
+    fontFamily: fontMono,
+    fontSize: 11,
+    color: COLORS.brassBright,
+    background: 'rgba(201,138,62,0.12)',
+    border: `1px solid rgba(201,138,62,0.3)`,
+    borderRadius: 6,
+    padding: '4px 8px',
+  },
+  infoPanel: { padding: '0 24px', background: COLORS.inkPanel, borderBottom: `1px solid ${COLORS.inkLine}` },
+  infoPanelInner: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: '12px 0',
+    maxWidth: 900,
+  },
+  infoText: { fontSize: 12.5, color: COLORS.mutedOnInk, margin: 0, lineHeight: 1.6, flex: 1 },
+  infoClose: {
+    background: 'transparent',
+    border: 'none',
+    color: COLORS.mutedOnInk,
+    cursor: 'pointer',
+    padding: 2,
+    flexShrink: 0,
+  },
+  body: {
+    flex: 1,
+    display: 'grid',
+    gridTemplateColumns: '1fr auto 1fr',
+    gap: 0,
+    padding: 20,
+  },
+  panel: {
+    display: 'flex',
+    flexDirection: 'column',
+    background: COLORS.paper,
+    borderRadius: 14,
+    overflow: 'hidden',
+    boxShadow: '0 12px 30px rgba(0,0,0,0.28)',
+    minHeight: 420,
+  },
+  panelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 16px',
+    background: COLORS.paperSoft,
+    borderBottom: `1px solid rgba(36,31,22,0.1)`,
+    color: COLORS.mutedOnPaper,
+  },
+  panelHeaderIcon: { display: 'flex', color: COLORS.brass },
+  panelHeaderText: { fontSize: 12, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase' },
+  textareaBraille: {
+    flex: 1,
+    border: 'none',
+    resize: 'none',
+    padding: '20px 22px',
+    background: 'transparent',
+    color: COLORS.textOnPaper,
+    fontFamily: fontMono,
+    fontSize: 22,
+    lineHeight: 1.9,
+    letterSpacing: 2,
+  },
+  textareaPlain: {
+    flex: 1,
+    border: 'none',
+    resize: 'none',
+    padding: '20px 22px',
+    background: 'transparent',
+    color: COLORS.textOnPaper,
+    fontFamily: fontVoice,
+    fontSize: 17,
+    lineHeight: 1.8,
+  },
+  outputPlain: {
+    flex: 1,
+    padding: '20px 22px',
+    color: COLORS.textOnPaper,
+    fontFamily: fontVoice,
+    fontSize: 17,
+    lineHeight: 1.8,
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+  },
+  outputBraille: {
+    flex: 1,
+    padding: '20px 22px',
+    color: COLORS.textOnPaper,
+    fontFamily: fontMono,
+    fontSize: 22,
+    lineHeight: 1.9,
+    letterSpacing: 2,
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+  },
+  divider: {
+    width: 32,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  dividerDot: { width: 5, height: 5, borderRadius: '50%', background: COLORS.inkLine },
+  statusBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '9px 24px',
+    background: COLORS.inkPanel,
+    borderTop: `1px solid ${COLORS.inkLine}`,
+    fontSize: 11.5,
+    color: COLORS.mutedOnInk,
+    fontFamily: fontMono,
+  },
+  statusDivider: { color: COLORS.inkLine },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(10,11,16,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  modalCard: {
+    background: COLORS.paper,
+    borderRadius: 16,
+    padding: 24,
+    width: 380,
+    maxWidth: '90vw',
+    boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+    animation: 'modalIn 0.2s ease-out',
+  },
+  modalTitle: { fontFamily: fontVoice, fontSize: 19, margin: '0 0 6px', color: COLORS.textOnPaper },
+  modalSubtitle: { fontSize: 12.5, color: COLORS.mutedOnPaper, margin: '0 0 14px', lineHeight: 1.5 },
+  modalInput: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: `1px solid rgba(36,31,22,0.2)`,
+    fontSize: 14,
+    fontFamily: fontSans,
+    background: '#fff',
+    color: COLORS.textOnPaper,
+  },
+  modalHint: { fontSize: 11.5, color: COLORS.brass, marginTop: 6, fontFamily: fontMono },
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 },
+  toast: {
+    position: 'fixed',
+    bottom: 50,
+    right: 24,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: COLORS.inkPanel,
+    border: `1px solid`,
+    color: COLORS.textOnInk,
+    padding: '11px 16px',
+    borderRadius: 10,
+    fontSize: 13,
+    boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
+    animation: 'toastIn 0.25s ease-out',
+    zIndex: 60,
+    maxWidth: 340,
+  },
+};

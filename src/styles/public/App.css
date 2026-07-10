@@ -1,0 +1,147 @@
+:root {
+    --blue: #007bff;
+    --indigo: #6610f2;
+    --purple: #6f42c1;
+    --pink: #e83e8c;
+    --red: #dc3545;
+    --orange: #fd7e14;
+    --yellow: #ffc107;
+    --green: #28a745;
+    --teal: #20c997;
+    --cyan: #17a2b8;
+    --white: #fff;
+    --black: #000;
+    --gray: #6c757d;
+    --gray-dark: #343a40;
+    --primary: #007bff;
+    --secondary: #6c757d;
+    --success: #28a745;
+    --info: #17a2b8;
+    --warning: #ffc107;
+    --danger: #dc3545;
+    --light: #f8f9fa;
+    --dark: #343a40;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+
+body {
+    width: 100%;
+    height: 100vh;
+    font-family: sans-serif;
+    background: var(--white);
+    color: var(--black);
+}
+
+/* font */
+
+.f_km_nm {
+    font-family: khmer;
+}
+
+.f_km_ml {
+    font-family: moul;
+}
+
+.f_km_bk {
+    font-family: bokor;
+}
+
+.f_km_fa {
+    font-family: fasthand;
+}
+
+.f_eg_sa {
+    font-family: sans-serif;
+}
+
+.f_eg_ak {
+    font-family: akaya;
+}
+
+.f_eg_tm {
+    font-family: 'Times New Roman', Times, serif;
+}
+
+/* text */
+[text="left"] {
+    text-align: left !important;
+}
+
+[text="right"] {
+    text-align: right !important;
+}
+
+[text="center"] {
+    text-align: center !important;
+}
+
+/* flex */
+[justify="start"] {
+    justify-content: start !important;
+}
+
+[justify="end"] {
+    justify-content: end !important;
+}
+
+[justify="center"] {
+    justify-content: center !important;
+}
+
+[items="start"] {
+    align-items: start !important;
+}
+
+[items="end"] {
+    align-items: end !important;
+}
+
+[items="center"] {
+    align-items: center !important;
+}
+
+[data_center="true"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+[data_left="true"] {
+    display: flex;
+    align-items: center;
+    justify-content: start;
+}
+
+[data_right="true"] {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+}
+
+[data_space="true"] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+[data_col="true"] {
+    display: flex;
+    flex-direction: column;
+}
+
+[data_row="true"] {
+    display: flex;
+    flex-direction: row;
+}
+
+[data_grid="true"] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
