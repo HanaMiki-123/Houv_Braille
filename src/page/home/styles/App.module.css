@@ -1,4 +1,188 @@
-.Home {
+.overlay {
+    position: fixed;
+    inset: 0;
     width: 100%;
-    height: 100%;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 999999;
+    animation: fadeIn 0.35s ease;
+    font-family: khmer;
+}
+
+
+.modal {
+    width: 420px;
+    max-width: 90%;
+    padding: 35px 30px;
+    background: linear-gradient(145deg,
+            #ffffff,
+            #f5f8ff);
+
+    border-radius: 25px;
+
+    box-shadow:
+        0 25px 60px rgba(0, 0, 0, 0.25);
+
+    text-align: center;
+
+    animation: popup 0.45s cubic-bezier(.17, .67, .35, 1.3);
+}
+
+
+.iconBox {
+    width: 90px;
+    height: 90px;
+
+    margin: auto;
+    margin-bottom: 20px;
+
+    border-radius: 50%;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    color: white;
+
+    background:
+        linear-gradient(135deg,
+            #2563eb,
+            #06b6d4);
+
+    position: relative;
+
+    animation: floating 2s infinite ease-in-out;
+}
+
+
+.sparkle {
+    position: absolute;
+    right: 5px;
+    top: 5px;
+    color: #ffd700;
+
+    animation: rotate 2s infinite linear;
+}
+
+
+.modal h2 {
+    margin: 10px 0;
+    color: #1e293b;
+    font-size: 26px;
+}
+
+
+.modal p {
+
+    color: #475569;
+
+    line-height: 1.9;
+
+    font-size: 16px;
+
+    margin-bottom: 30px;
+}
+
+
+
+.closeBtn {
+
+    border: none;
+
+    padding: 12px 28px;
+
+    border-radius: 50px;
+
+    cursor: pointer;
+
+    display: inline-flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    color: white;
+
+    font-size: 16px;
+
+    background:
+        linear-gradient(135deg,
+            #ef4444,
+            #f97316);
+
+    transition: .3s;
+
+}
+
+
+.closeBtn:hover {
+
+    transform: translateY(-3px);
+
+    box-shadow:
+        0 10px 25px rgba(239, 68, 68, .4);
+
+}
+
+
+
+@keyframes fadeIn {
+
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+
+}
+
+
+
+@keyframes popup {
+
+    from {
+        opacity: 0;
+        transform: scale(.7);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+}
+
+
+
+@keyframes floating {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+
+}
+
+
+
+@keyframes rotate {
+
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+
 }
