@@ -294,7 +294,7 @@ export default function BrailleEditor() {
         <div style={styles.headerLeft}>
           <DotLogo active />
           <div>
-            <h1 style={styles.title}>ហត្ថលេខិត Braille</h1>
+            <h1 style={styles.title}>Houv_Braille</h1>
             <p style={styles.subtitle}>កម្មវិធីសរសេរ &amp; បំប្លែងអក្សរទៅជា Braille ជាបន្តបន្ទាប់</p>
           </div>
         </div>
