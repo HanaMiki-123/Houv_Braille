@@ -8,9 +8,9 @@ const APP_VERSION = __WEBSITE_VERSION__;
 // (".hv.braille"), the native Save dialog can decide the typed name is
 // missing its extension and append the whole thing again, producing
 // "name.hv.braille.hv.braille". Using one dot avoids that ambiguity entirely.
-const FILE_EXTENSION = '.hvbraille';
+const FILE_EXTENSION = '.houvec';
 // Old file extension kept only so previously-saved files can still be opened.
-const LEGACY_EXTENSION = '.hv.braille';
+const LEGACY_EXTENSION = '.houvec';
 
 const BRAILLE_MAP = {
   a: '24', b: '245', c: '25', d: '256', e: '26', f: '124', g: '1245', h: '125', i: '145', j: '1456', k: '14', l: '134',
@@ -393,8 +393,8 @@ export default function BrailleEditor() {
         <div style={styles.headerLeft}>
           <DotLogo active />
           <div>
-            <h1 style={styles.title}>Houv_Braille</h1>
-            <p style={styles.subtitle}>កម្មវិធីសរសេរ &amp; បំប្លែងអក្សរទៅជា Braille ជាបន្តបន្ទាប់</p>
+            <h1 style={styles.title}>Houv_Encrypt</h1>
+            <p style={styles.subtitle}>កម្មវិធីសរសេរ &amp; បំប្លែងអក្សរទៅជា Code Binary ជាបន្តបន្ទាប់</p>
           </div>
         </div>
 
@@ -444,7 +444,7 @@ export default function BrailleEditor() {
             className="hv-btn"
             style={styles.btnIcon}
             onClick={() => setShowInfo((v) => !v)}
-            aria-label="ព័ត៌មានអំពីតារាង Braille"
+            aria-label="ព័ត៌មានអំពីតារាង Houv_EC"
           >
             <Info size={16} />
           </button>
@@ -457,8 +457,8 @@ export default function BrailleEditor() {
         <div style={styles.infoPanel}>
           <div style={styles.infoPanelInner}>
             <p style={styles.infoText}>
-              ការបំប្លែងនេះប្រើតារាង Braille កម្រិត១ (Grade&nbsp;1) ដ៏សាមញ្ញ៖ អក្សរធំ-តូចប្រើចំណុចដូចគ្នា
-              ហើយលេខ ០-៩ ប្រើចំណុចដូចអក្សរ a-j ដើម្បីរក្សាទំហំអក្សរឲ្យស្មើគ្នារវាងអក្សរធម្មតានិង Braille។
+              ការបំប្លែងនេះប្រើតារាង Houv_EC កម្រិត១ (Grade&nbsp;1) ដ៏សាមញ្ញ៖ អក្សរធំ-តូចប្រើចំណុចដូចគ្នា
+              ហើយលេខ ០-៩ ប្រើចំណុចដូចអក្សរ a-j ដើម្បីរក្សាទំហំអក្សរឲ្យស្មើគ្នារវាងអក្សរធម្មតានិង Houv_EC។
             </p>
             <button style={styles.infoClose} onClick={() => setShowInfo(false)} aria-label="បិទ">
               <X size={15} />
@@ -517,7 +517,7 @@ export default function BrailleEditor() {
               {mode === 'create' ? <Type size={14} /> : <Sparkles size={14} />}
             </span>
             <span style={styles.panelHeaderText}>
-              {mode === 'create' ? 'Braille Code' : 'Braille Code'}
+              {mode === 'create' ? 'Houv_EC Code' : 'Houv_EC Code'}
             </span>
           </div>
           <div style={styles.outputBraille}>
@@ -532,7 +532,7 @@ export default function BrailleEditor() {
         <span>{mode === 'create' ? 'Create file' : 'Translate'}</span>
         <span style={styles.statusDivider}>·</span>
         <span>{charCount} តួអក្សរ</span>
-        <span style={{ marginLeft: 'auto' }}>hv-braille-editor v{APP_VERSION}</span>
+        <span style={{ marginLeft: 'auto' }}>Houv_EC v{APP_VERSION}</span>
       </footer>
 
       {showNameModal && (
