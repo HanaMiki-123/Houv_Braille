@@ -98,8 +98,11 @@ function textToBraille(text) {
   return text
     .split('')
     .map((ch) => {
-      const lower = ch.toLowerCase();
-      return BRAILLE_MAP[lower] !== undefined ? BRAILLE_MAP[lower] : ch;
+      return BRAILLE_MAP[ch] !== undefined
+        ? BRAILLE_MAP[ch]
+        : BRAILLE_MAP[ch.toLowerCase()] !== undefined
+          ? BRAILLE_MAP[ch.toLowerCase()]
+          : ch;
     })
     .join('');
 }
@@ -231,7 +234,7 @@ export default function BrailleEditor() {
     const braille = rawText
       .split('')
       .map((ch) => {
-        const dots = BRAILLE_MAP[ch.toLowerCase()] ?? ch;
+        const dots = BRAILLE_MAP[ch] ?? BRAILLE_MAP[ch.toLowerCase()] ?? ch;
         return dotsToBinary(dots);
       })
       .join(' ');
