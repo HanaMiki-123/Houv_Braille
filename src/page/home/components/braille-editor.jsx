@@ -3,121 +3,10 @@ import { FileText, FolderOpen, Save, Languages, Type, Info, X, CheckCircle2, Ale
 
 const APP_VERSION = __WEBSITE_VERSION__;
 
-// Single-token extension. Some browsers/OS file pickers only recognize the
-// *last* dot as "the extension" — when the accepted extension has two dots
-// (".hv.braille"), the native Save dialog can decide the typed name is
-// missing its extension and append the whole thing again, producing
-// "name.hv.braille.hv.braille". Using one dot avoids that ambiguity entirely.
 const FILE_EXTENSION = '.houvec';
-// Old file extension kept only so previously-saved files can still be opened.
 const LEGACY_EXTENSION = '.houvec';
 
-const BRAILLE_MAP = {
-  A: '238',
-  B: '2346',
-  C: '237',
-  D: '239',
-  E: '136',
-  F: '1',
-  G: '3',
-  H: '5',
-  I: '6',
-  J: '9',
-  K: '8',
-  L: '7',
-  M: '12',
-  N: '18',
-  O: '17',
-  P: '19',
-  Q: '13',
-  R: '11',
-  S: '2',
-  T: '4',
-  U: '89',
-  V: '34',
-  W: '38',
-  X: '37',
-  Y: '46',
-  Z: '78',
-  a: '24', b: '245', c: '25', d: '256', e: '26', f: '124', g: '1245', h: '125', i: '145', j: '1456', k: '14', l: '134',
-  m: '1345', n: '135', o: '1356', p: '123', q: '1235', r: '1236', s: '234', t: '2345', u: '246', v: '2456', w: '2356',
-  x: '1346', y: '12346', z: '12356',
-  '1': '15', '2': '156', '3': '35', '4': '356', '5': '36', '6': '16', '7': '126', '8': '1256', '9': '256', '0': '135',
-  ' ': ' ', '.': '146', ',': '246', '?': '236', '!': '346', "'": '56', '-': '345',
-  ':': '1456', ';': '2456', '"': '1256', '(': '12345', ')': '13456', '/': '235', '\n': '\n',
-};
-
-function dotsToBinary(dots) {
-  if (dots === ' ') return '000000000';
-  if (dots === '\n') return '\n';
-
-  // បើមាន 9 ខ្ទង់រួចហើយ យកវាជា binary ដោយផ្ទាល់
-  if (/^[01]{9}$/.test(dots)) {
-    return dots;
-  }
-
-  const bits = ['0', '0', '0', '0', '0', '0', '0', '0', '0'];
-
-  for (const d of dots) {
-    if (d >= '1' && d <= '9') {
-      bits[Number(d) - 1] = '1';
-    }
-  }
-
-  return bits.join('');
-}
-
-function binaryToDots(binary) {
-  if (binary === '000000000') return ' ';
-  if (binary === '\n') return '\n';
-
-  let dots = '';
-
-  for (let i = 0; i < binary.length; i++) {
-    if (binary[i] === '1') {
-      dots += String(i + 1);
-    }
-  }
-
-  return dots;
-}
-
-const REVERSE_MAP = {};
-
-Object.entries(BRAILLE_MAP).forEach(([plain, braille]) => {
-  if (
-    plain >= 'a' &&
-    plain <= 'z'
-  ) {
-    REVERSE_MAP[braille] = plain;
-  }
-});
-
-Object.entries(BRAILLE_MAP).forEach(([plain, braille]) => {
-  if (!(braille in REVERSE_MAP)) {
-    REVERSE_MAP[braille] = plain;
-  }
-});
-
-function textToBraille(text) {
-  return text
-    .split('')
-    .map((ch) => {
-      return BRAILLE_MAP[ch] !== undefined
-        ? BRAILLE_MAP[ch]
-        : BRAILLE_MAP[ch.toLowerCase()] !== undefined
-          ? BRAILLE_MAP[ch.toLowerCase()]
-          : ch;
-    })
-    .join('');
-}
-
-function brailleToText(braille) {
-  return braille
-    .split('')
-    .map((ch) => (REVERSE_MAP[ch] !== undefined ? REVERSE_MAP[ch] : ch))
-    .join('');
-}
+// Braille conversion logic has been moved to the backend.
 
 // Strips ANY trailing occurrence(s) of either the current or legacy
 // extension, repeatedly, so a name is never left with a doubled suffix no
@@ -192,7 +81,6 @@ function DotLogo({ active }) {
 }
 
 export default function BrailleEditor() {
-  const [mode, setMode] = useState('create');
   const [rawText, setRawText] = useState('');
   const [fileName, setFileName] = useState(null);
   const [fileHandle, setFileHandle] = useState(null);
@@ -215,36 +103,24 @@ export default function BrailleEditor() {
     toastTimerRef.current = setTimeout(() => setToast(null), 3600);
   }, []);
 
-  const handleCreateModeChange = (e) => {
-    const newDisplayed = e.target.value;
-    const oldDisplayed = textToBraille(rawText);
-    let start = 0;
-    const maxStart = Math.min(oldDisplayed.length, newDisplayed.length);
-    while (start < maxStart && oldDisplayed[start] === newDisplayed[start]) start++;
-    let oldEnd = oldDisplayed.length;
-    let newEnd = newDisplayed.length;
-    while (oldEnd > start && newEnd > start && oldDisplayed[oldEnd - 1] === newDisplayed[newEnd - 1]) {
-      oldEnd--;
-      newEnd--;
+
+
+  const fetchFileContent = async (currentFileName) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BACKEND}/api/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawText, fileName: currentFileName }),
+      });
+      if (!response.ok) throw new Error('Network response was not ok');
+      const data = await response.json();
+      const braille = data.binary;
+      return `${braille}\n\n---\nVersion: ${APP_VERSION}\n`;
+    } catch (error) {
+      console.error("Error converting text to braille:", error);
+      showToast('error', 'មានបញ្ហាក្នុងការបម្លែងអក្សរ។');
+      return `\n\n---\nVersion: ${APP_VERSION}\n`;
     }
-    const removed = oldEnd - start;
-    const inserted = newDisplayed.slice(start, newEnd);
-    const newRaw = rawText.slice(0, start) + inserted + rawText.slice(start + removed);
-    cursorPosRef.current = e.target.selectionStart;
-    setRawText(newRaw);
-    setDirty(true);
-  };
-
-  const buildFileContent = () => {
-    const braille = rawText
-      .split('')
-      .map((ch) => {
-        const dots = BRAILLE_MAP[ch] ?? BRAILLE_MAP[ch.toLowerCase()] ?? ch;
-        return dotsToBinary(dots);
-      })
-      .join(' ');
-
-    return `${braille}\n\n---\nVersion: ${APP_VERSION}\n`;
   };
 
   function fallbackDownload(name, content) {
@@ -265,7 +141,7 @@ export default function BrailleEditor() {
 
   async function performCreateFile(rawName) {
     const finalName = sanitizeFileName(rawName) + FILE_EXTENSION;
-    const content = buildFileContent();
+    const content = await fetchFileContent(finalName);
     if (supportsFS) {
       try {
         const handle = await window.showSaveFilePicker({
@@ -292,7 +168,7 @@ export default function BrailleEditor() {
       showToast('error', 'សូមបង្កើត ឬបើកឯកសារជាមុនសិន');
       return;
     }
-    const content = buildFileContent();
+    const content = await fetchFileContent(fileName);
     if (fileHandle && fileHandle.createWritable) {
       try {
         const writable = await fileHandle.createWritable();
@@ -325,13 +201,20 @@ export default function BrailleEditor() {
       const [brailleContent] = text.split('\n\n---\n');
       const binaryText = (brailleContent || '').replace(/\n$/, '');
 
-      const restoredRaw = binaryText
-        .split(' ')
-        .map((binary) => {
-          const dots = binaryToDots(binary);
-          return REVERSE_MAP[dots] ?? dots;
-        })
-        .join('');
+      let restoredRaw = '';
+      try {
+        const response = await fetch('http://localhost:3000/api/reverse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ binary: binaryText }),
+        });
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+        restoredRaw = data.text;
+      } catch (error) {
+        console.error("Error reversing braille to text:", error);
+        showToast('error', 'មានបញ្ហាក្នុងការបម្លែងឯកសារ។');
+      }
 
       const displayName = sanitizeFileName(file.name) + FILE_EXTENSION;
 
@@ -339,7 +222,6 @@ export default function BrailleEditor() {
       setFileHandle(handle);
       setOpenedFile(file);
       setFileName(displayName);
-      setMode('create');
       setDirty(false);
 
       showToast('success', `បានបើកឯកសារ "${displayName}"`);
@@ -376,9 +258,8 @@ export default function BrailleEditor() {
     await loadFile(file, null);
   }
 
-  const rightDisplay = textToBraille(rawText);
   const charCount = rawText.length;
-  const showFileButtons = mode === 'create';
+  const showFileButtons = true;
 
   return (
     <div style={styles.appShell}>
@@ -418,7 +299,7 @@ export default function BrailleEditor() {
         .hv-textarea:focus { outline: none; }
         ::selection { background: ${COLORS.brass}; color: ${COLORS.ink}; }
         @media (max-width: 820px) {
-          .hv-body { grid-template-columns: 1fr !important; grid-template-rows: 1fr 1fr; }
+          .hv-body { grid-template-columns: 1fr !important; grid-template-rows: 1fr; }
           .hv-toolbar { flex-wrap: wrap; }
         }
       `}</style>
@@ -433,18 +314,7 @@ export default function BrailleEditor() {
         </div>
 
         <div className="hv-toolbar" style={styles.toolbar}>
-          <div style={styles.selectWrap}>
-            <label style={styles.selectLabel}>របៀប</label>
-            <select
-              className="hv-select"
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-              style={styles.select}
-            >
-              <option value="create">Create file</option>
-              <option value="translate">Translate</option>
-            </select>
-          </div>
+
 
           {showFileButtons && (
             <>
@@ -505,65 +375,29 @@ export default function BrailleEditor() {
         <section className="hv-panel" style={styles.panel}>
           <div style={styles.panelHeader}>
             <span style={styles.panelHeaderIcon}>
-              {mode === 'create' ? <Sparkles size={14} /> : <Type size={14} />}
+              <Sparkles size={14} />
             </span>
-            <span style={styles.panelHeaderText}>
-              {mode === 'create' ? 'អក្សរធម្មតា' : 'អក្សរធម្មតា'}
-            </span>
+            <span style={styles.panelHeaderText}>អក្សរធម្មតា</span>
           </div>
-          {mode === 'create' ? (
-            <textarea
-              ref={leftRef}
-              className="hv-textarea"
-              style={styles.textareaPlain}
-              value={rawText}
-              onChange={(e) => {
-                setRawText(e.target.value);
-                setDirty(true);
-              }}
-              placeholder="វាយអក្សរធម្មតានៅទីនេះ..."
-              spellCheck={false}
-            />
-          ) : (
-            <textarea
-              className="hv-textarea"
-              style={styles.textareaPlain}
-              value={rawText}
-              onChange={(e) => {
-                setRawText(e.target.value);
-                setDirty(true);
-              }}
-              placeholder="វាយអក្សរធម្មតានៅទីនេះ..."
-              spellCheck={false}
-            />
-          )}
-        </section>
-
-        <div style={styles.divider} aria-hidden="true">
-          <span style={styles.dividerDot} />
-          <span style={styles.dividerDot} />
-          <span style={styles.dividerDot} />
-        </div>
-
-        <section className="hv-panel" style={styles.panel}>
-          <div style={styles.panelHeader}>
-            <span style={styles.panelHeaderIcon}>
-              {mode === 'create' ? <Type size={14} /> : <Sparkles size={14} />}
-            </span>
-            <span style={styles.panelHeaderText}>
-              {mode === 'create' ? 'Houv_EC Code' : 'Houv_EC Code'}
-            </span>
-          </div>
-          <div style={styles.outputBraille}>
-            {rightDisplay || <span style={{ opacity: 0.4 }}>លទ្ធផលបង្ហាញនៅទីនេះ...</span>}
-          </div>
+          <textarea
+            ref={leftRef}
+            className="hv-textarea"
+            style={styles.textareaPlain}
+            value={rawText}
+            onChange={(e) => {
+              setRawText(e.target.value);
+              setDirty(true);
+            }}
+            placeholder="វាយអក្សរធម្មតានៅទីនេះ..."
+            spellCheck={false}
+          />
         </section>
       </main>
 
       <footer style={styles.statusBar}>
         <span>{fileName ? `${fileName}${dirty ? ' •' : ''}` : 'ឯកសារថ្មី (មិនទាន់រក្សាទុក)'}</span>
         <span style={styles.statusDivider}>·</span>
-        <span>{mode === 'create' ? 'Create file' : 'Translate'}</span>
+        <span>Create file</span>
         <span style={styles.statusDivider}>·</span>
         <span>{charCount} តួអក្សរ</span>
         <span style={{ marginLeft: 'auto' }}>Houv_EC v{APP_VERSION}</span>
@@ -734,7 +568,7 @@ const styles = {
   body: {
     flex: 1,
     display: 'grid',
-    gridTemplateColumns: '1fr auto 1fr',
+    gridTemplateColumns: '1fr',
     gap: 0,
     padding: 20,
   },
