@@ -22,7 +22,7 @@ const BRAILLE_MAP = {
 };
 
 function dotsToBinary(dots) {
-  if (dots === ' ') return ' ';
+  if (dots === ' ') return '000000';
   if (dots === '\n') return '\n';
 
   const bits = ['0', '0', '0', '0', '0', '0'];
@@ -37,7 +37,7 @@ function dotsToBinary(dots) {
 }
 
 function binaryToDots(binary) {
-  if (binary === ' ') return ' ';
+  if (binary === '000000') return ' ';
   if (binary === '\n') return '\n';
 
   let dots = '';
