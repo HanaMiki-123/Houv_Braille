@@ -13,17 +13,59 @@ const FILE_EXTENSION = '.hvbraille';
 const LEGACY_EXTENSION = '.hv.braille';
 
 const BRAILLE_MAP = {
-  a: '⠁', b: '⠃', c: '⠉', d: '⠙', e: '⠑', f: '⠋', g: '⠛', h: '⠓', i: '⠊', j: '⠚',
-  k: '⠅', l: '⠇', m: '⠍', n: '⠝', o: '⠕', p: '⠏', q: '⠟', r: '⠗', s: '⠎', t: '⠞',
-  u: '⠥', v: '⠧', w: '⠺', x: '⠭', y: '⠽', z: '⠵',
-  '1': '⠁', '2': '⠃', '3': '⠉', '4': '⠙', '5': '⠑', '6': '⠋', '7': '⠛', '8': '⠓', '9': '⠊', '0': '⠚',
-  ' ': ' ', '.': '⠲', ',': '⠂', '?': '⠦', '!': '⠖', "'": '⠄', '-': '⠤',
-  ':': '⠒', ';': '⠆', '"': '⠶', '(': '⠣', ')': '⠜', '/': '⠌', '\n': '\n',
+  a: '24', b: '245', c: '25', d: '256', e: '26', f: '124', g: '1245', h: '125', i: '145', j: '1456', k: '14', l: '134',
+  m: '1345', n: '135', o: '1356', p: '123', q: '1235', r: '1236', s: '234', t: '2345', u: '246', v: '2456', w: '2356',
+  x: '1346', y: '12346', z: '12356',
+  '1': '15', '2': '156', '3': '35', '4': '356', '5': '36', '6': '16', '7': '126', '8': '1256', '9': '256', '0': '135',
+  ' ': ' ', '.': '146', ',': '246', '?': '236', '!': '346', "'": '56', '-': '345',
+  ':': '1456', ';': '2456', '"': '1256', '(': '12345', ')': '13456', '/': '235', '\n': '\n',
 };
 
+function dotsToBinary(dots) {
+  if (dots === ' ') return ' ';
+  if (dots === '\n') return '\n';
+
+  const bits = ['0', '0', '0', '0', '0', '0'];
+
+  for (const d of dots) {
+    if (d >= '1' && d <= '6') {
+      bits[Number(d) - 1] = '1';
+    }
+  }
+
+  return bits.join('');
+}
+
+function binaryToDots(binary) {
+  if (binary === ' ') return ' ';
+  if (binary === '\n') return '\n';
+
+  let dots = '';
+
+  for (let i = 0; i < binary.length; i++) {
+    if (binary[i] === '1') {
+      dots += String(i + 1);
+    }
+  }
+
+  return dots;
+}
+
 const REVERSE_MAP = {};
+
 Object.entries(BRAILLE_MAP).forEach(([plain, braille]) => {
-  if (!(braille in REVERSE_MAP)) REVERSE_MAP[braille] = plain;
+  if (
+    plain >= 'a' &&
+    plain <= 'z'
+  ) {
+    REVERSE_MAP[braille] = plain;
+  }
+});
+
+Object.entries(BRAILLE_MAP).forEach(([plain, braille]) => {
+  if (!(braille in REVERSE_MAP)) {
+    REVERSE_MAP[braille] = plain;
+  }
 });
 
 function textToBraille(text) {
@@ -120,6 +162,7 @@ export default function BrailleEditor() {
   const [rawText, setRawText] = useState('');
   const [fileName, setFileName] = useState(null);
   const [fileHandle, setFileHandle] = useState(null);
+  const [openedFile, setOpenedFile] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -127,7 +170,6 @@ export default function BrailleEditor() {
   const [toast, setToast] = useState(null);
 
   const leftRef = useRef(null);
-  const cursorPosRef = useRef(0);
   const fileInputRef = useRef(null);
   const toastTimerRef = useRef(null);
 
@@ -138,12 +180,6 @@ export default function BrailleEditor() {
     setToast({ type, message });
     toastTimerRef.current = setTimeout(() => setToast(null), 3600);
   }, []);
-
-  useEffect(() => {
-    if (mode === 'create' && leftRef.current) {
-      leftRef.current.selectionStart = leftRef.current.selectionEnd = cursorPosRef.current;
-    }
-  }, [rawText, mode]);
 
   const handleCreateModeChange = (e) => {
     const newDisplayed = e.target.value;
@@ -160,13 +196,19 @@ export default function BrailleEditor() {
     const removed = oldEnd - start;
     const inserted = newDisplayed.slice(start, newEnd);
     const newRaw = rawText.slice(0, start) + inserted + rawText.slice(start + removed);
-    cursorPosRef.current = start + inserted.length;
+    cursorPosRef.current = e.target.selectionStart;
     setRawText(newRaw);
     setDirty(true);
   };
 
   const buildFileContent = () => {
-    const braille = textToBraille(rawText);
+    const braille = rawText
+      .split('')
+      .map((ch) => {
+        const dots = BRAILLE_MAP[ch.toLowerCase()] ?? ch;
+        return dotsToBinary(dots);
+      })
+      .join(' ');
     const url = typeof window !== 'undefined' ? window.location.href : '';
     return `${braille}\n\n---\nVersion: ${APP_VERSION}\nURL: ${url}\n`;
   };
@@ -217,7 +259,7 @@ export default function BrailleEditor() {
       return;
     }
     const content = buildFileContent();
-    if (fileHandle) {
+    if (fileHandle && fileHandle.createWritable) {
       try {
         const writable = await fileHandle.createWritable();
         await writable.write(content);
@@ -228,27 +270,44 @@ export default function BrailleEditor() {
         showToast('error', 'មិនអាចរក្សាទុកបានទេ');
       }
     } else {
-      fallbackDownload(fileName, content);
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+
+      URL.revokeObjectURL(url);
+
+      setDirty(false);
+      showToast('success', `បានទាញយក "${fileName}" ថ្មី`);
     }
   }
 
   async function loadFile(file, handle) {
-    if (!hasKnownExtension(file.name)) {
-      showToast('error', `អនុញ្ញាតតែឯកសារនាមត្រកូល ${FILE_EXTENSION} ប៉ុណ្ណោះ!`);
-      return;
-    }
     try {
       const text = await file.text();
       const [brailleContent] = text.split('\n\n---\n');
-      const restoredRaw = brailleToText((brailleContent || '').replace(/\n$/, ''));
-      // Normalize the display name so a legacy double-extension file (from
-      // before this fix) is shown and re-saved with a single clean suffix.
+      const binaryText = (brailleContent || '').replace(/\n$/, '');
+
+      const restoredRaw = binaryText
+        .split(' ')
+        .map((binary) => {
+          const dots = binaryToDots(binary);
+          return REVERSE_MAP[dots] ?? dots;
+        })
+        .join('');
+
       const displayName = sanitizeFileName(file.name) + FILE_EXTENSION;
+
       setRawText(restoredRaw);
       setFileHandle(handle);
+      setOpenedFile(file);
       setFileName(displayName);
       setMode('create');
       setDirty(false);
+
       showToast('success', `បានបើកឯកសារ "${displayName}"`);
     } catch (err) {
       showToast('error', 'មិនអាចអានឯកសារនេះបានទេ');
@@ -283,7 +342,7 @@ export default function BrailleEditor() {
     await loadFile(file, null);
   }
 
-  const rightDisplay = mode === 'create' ? rawText : textToBraille(rawText);
+  const rightDisplay = textToBraille(rawText);
   const charCount = rawText.length;
   const showFileButtons = mode === 'create';
 
@@ -415,17 +474,20 @@ export default function BrailleEditor() {
               {mode === 'create' ? <Sparkles size={14} /> : <Type size={14} />}
             </span>
             <span style={styles.panelHeaderText}>
-              {mode === 'create' ? 'សរសេរនៅទីនេះ · លទ្ធផលចេញជា Braille' : 'អក្សរធម្មតា'}
+              {mode === 'create' ? 'អក្សរធម្មតា' : 'អក្សរធម្មតា'}
             </span>
           </div>
           {mode === 'create' ? (
             <textarea
               ref={leftRef}
               className="hv-textarea"
-              style={styles.textareaBraille}
-              value={textToBraille(rawText)}
-              onChange={handleCreateModeChange}
-              placeholder="⠁⠃⠉ ចាប់ផ្ដើមវាយអក្សរ..."
+              style={styles.textareaPlain}
+              value={rawText}
+              onChange={(e) => {
+                setRawText(e.target.value);
+                setDirty(true);
+              }}
+              placeholder="វាយអក្សរធម្មតានៅទីនេះ..."
               spellCheck={false}
             />
           ) : (
@@ -455,12 +517,10 @@ export default function BrailleEditor() {
               {mode === 'create' ? <Type size={14} /> : <Sparkles size={14} />}
             </span>
             <span style={styles.panelHeaderText}>
-              {mode === 'create' ? 'អក្សរធម្មតា (Realtime)' : 'លទ្ធផល Braille (Realtime)'}
+              {mode === 'create' ? 'Braille Code' : 'Braille Code'}
             </span>
           </div>
-          <div
-            style={mode === 'create' ? styles.outputPlain : styles.outputBraille}
-          >
+          <div style={styles.outputBraille}>
             {rightDisplay || <span style={{ opacity: 0.4 }}>លទ្ធផលបង្ហាញនៅទីនេះ...</span>}
           </div>
         </section>
