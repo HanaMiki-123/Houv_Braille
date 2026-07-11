@@ -51,6 +51,11 @@ function dotsToBinary(dots) {
   if (dots === ' ') return '000000000';
   if (dots === '\n') return '\n';
 
+  // បើមាន 9 ខ្ទង់រួចហើយ យកវាជា binary ដោយផ្ទាល់
+  if (/^[01]{9}$/.test(dots)) {
+    return dots;
+  }
+
   const bits = ['0', '0', '0', '0', '0', '0', '0', '0', '0'];
 
   for (const d of dots) {
