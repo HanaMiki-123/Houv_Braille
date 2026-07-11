@@ -209,8 +209,8 @@ export default function BrailleEditor() {
         return dotsToBinary(dots);
       })
       .join(' ');
-    const url = typeof window !== 'undefined' ? window.location.href : '';
-    return `${braille}\n\n---\nVersion: ${APP_VERSION}\nURL: ${url}\n`;
+
+    return `${braille}\n\n---\nVersion: ${APP_VERSION}\n`;
   };
 
   function fallbackDownload(name, content) {
