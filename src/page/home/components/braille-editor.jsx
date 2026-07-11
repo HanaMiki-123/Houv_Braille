@@ -203,7 +203,7 @@ export default function BrailleEditor() {
 
       let restoredRaw = '';
       try {
-        const response = await fetch('http://localhost:3000/api/reverse', {
+        const response = await fetch(`${import.meta.env.VITE_API_BACKEND}/api/reverse`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ binary: binaryText }),
